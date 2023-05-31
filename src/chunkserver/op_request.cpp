@@ -39,6 +39,16 @@
 namespace curve {
 namespace chunkserver {
 
+static std::vector<SequenceNum> getSnapIds(const ChunkRequest* request) {
+    // std::vector has move-semantics in c++11
+    std::vector<SequenceNum> snaps;
+    for (long i = 0; i < request->snaps_size(); ++i) {
+        snaps.push_back(request->snaps(i));
+    }
+    std::sort(snaps.begin(), snaps.end());
+    return snaps;
+}
+
 ChunkOpRequest::ChunkOpRequest() :
     datastore_(nullptr),
     node_(nullptr),
@@ -187,7 +197,8 @@ void DeleteChunkRequest::OnApply(uint64_t index,
     brpc::ClosureGuard doneGuard(done);
 
     auto ret = datastore_->DeleteChunk(request_->chunkid(),
-                                       request_->sn());
+                                       request_->sn(),
+                                       std::make_shared<SnapContext>(getSnapIds(request_)));
     if (CSErrorCode::Success == ret) {
         response_->set_status(CHUNK_OP_STATUS::CHUNK_OP_STATUS_SUCCESS);
         node_->UpdateAppliedIndex(index);
@@ -211,7 +222,8 @@ void DeleteChunkRequest::OnApplyFromLog(std::shared_ptr<CSDataStore> datastore,
     (void)data;
     // NOTE: 处理过程中优先使用参数传入的datastore/request
     auto ret = datastore->DeleteChunk(request.chunkid(),
-                                      request.sn());
+                                      request.sn(),
+                                      std::make_shared<SnapContext>(getSnapIds(&request)));
     if (CSErrorCode::Success == ret)
         return;
 
@@ -393,6 +405,7 @@ static void ReadBufferDeleter(void* ptr) {
 }
 
 void ReadChunkRequest::ReadChunk() {
+    CSErrorCode ret = CSErrorCode::Success;
     char *readBuffer = nullptr;
     size_t size = request_->size();
 
@@ -400,11 +413,32 @@ void ReadChunkRequest::ReadChunk() {
     CHECK(nullptr != readBuffer)
         << "new readBuffer failed " << strerror(errno);
 
-    auto ret = datastore_->ReadChunk(request_->chunkid(),
-                                     request_->sn(),
-                                     readBuffer,
-                                     request_->offset(),
-                                     size);
+    if (false == request_->has_cloneno()) {
+        ret = datastore_->ReadChunk(request_->chunkid(),
+                                        request_->sn(),
+                                        readBuffer,
+                                        request_->offset(),
+                                        size);
+    } else {
+        //now get the clone about parameter to the context
+        struct CloneContext ctx;
+        struct CloneInfos cfo;
+
+        ctx.cloneNo = request_->cloneno();
+        for (int i = 0; i < request_->clones_size(); i++) {
+            cfo.cloneNo = request_->clones(i).cloneno();
+            cfo.cloneSn = request_->clones(i).clonesn();
+            ctx.clones.push_back(cfo);
+        }
+
+        ret = datastore_->ReadChunk(request_->chunkid(),
+                                        request_->sn(),
+                                        readBuffer,
+                                        request_->offset(),
+                                        size,
+                                        ctx);
+    }
+
     butil::IOBuf wrapper;
     wrapper.append_user_data(readBuffer, size, ReadBufferDeleter);
     if (CSErrorCode::Success == ret) {
@@ -428,6 +462,7 @@ void ReadChunkRequest::ReadChunk() {
 
 void WriteChunkRequest::OnApply(uint64_t index,
                                 ::google::protobuf::Closure *done) {
+    CSErrorCode ret = CSErrorCode::Success;
     brpc::ClosureGuard doneGuard(done);
     uint32_t cost;
 
@@ -438,13 +473,34 @@ void WriteChunkRequest::OnApply(uint64_t index,
                             request_->clonefileoffset());
     }
 
-    auto ret = datastore_->WriteChunk(request_->chunkid(),
-                                      request_->sn(),
-                                      cntl_->request_attachment(),
-                                      request_->offset(),
-                                      request_->size(),
-                                      &cost,
-                                      cloneSourceLocation);
+    if (false == request_->has_cloneno()) {
+        ret = datastore_->WriteChunk(request_->chunkid(),
+                                    request_->sn(),
+                                    cntl_->request_attachment(),
+                                    request_->offset(),
+                                    request_->size(),
+                                    &cost,
+                                    std::make_shared<SnapContext>(getSnapIds(request_)),
+                                    cloneSourceLocation);
+    } else {
+        struct CloneContext ctx;
+        struct CloneInfos cfo;
+        ctx.cloneNo = request_->cloneno();
+        for (int i = 0; i < request_->clones_size(); i++) {
+            cfo.cloneNo = request_->clones(i).cloneno();
+            cfo.cloneSn = request_->clones(i).clonesn();
+            ctx.clones.push_back(cfo);
+        }
+
+        ret = datastore_->WriteChunk(request_->chunkid(),
+                                    request_->sn(),
+                                    cntl_->request_attachment(),
+                                    request_->offset(),
+                                    request_->size(),
+                                    &cost,
+                                    std::make_shared<SnapContext>(getSnapIds(request_)),
+                                    std::make_shared<struct CloneContext>(ctx));
+    }
 
     if (CSErrorCode::Success == ret) {
         response_->set_status(CHUNK_OP_STATUS::CHUNK_OP_STATUS_SUCCESS);
@@ -498,6 +554,7 @@ void WriteChunkRequest::OnApplyFromLog(std::shared_ptr<CSDataStore> datastore,
                                      request.offset(),
                                      request.size(),
                                      &cost,
+                                     std::make_shared<SnapContext>(getSnapIds(&request)),
                                      cloneSourceLocation);
      if (CSErrorCode::Success == ret) {
          return;
@@ -520,17 +577,40 @@ void WriteChunkRequest::OnApplyFromLog(std::shared_ptr<CSDataStore> datastore,
 
 void ReadSnapshotRequest::OnApply(uint64_t index,
                                   ::google::protobuf::Closure *done) {
+    CSErrorCode ret = CSErrorCode::Success;
     brpc::ClosureGuard doneGuard(done);
     char *readBuffer = nullptr;
     uint32_t size = request_->size();
     readBuffer = new(std::nothrow)char[size];
     CHECK(nullptr != readBuffer) << "new readBuffer failed, "
                                  << errno << ":" << strerror(errno);
-    auto ret = datastore_->ReadSnapshotChunk(request_->chunkid(),
-                                             request_->sn(),
-                                             readBuffer,
-                                             request_->offset(),
-                                             request_->size());
+    
+    if (false == request_->has_cloneno()) {
+        ret = datastore_->ReadSnapshotChunk(request_->chunkid(),
+                                            request_->sn(),
+                                            readBuffer,
+                                            request_->offset(),
+                                            request_->size(),
+                                            std::make_shared<SnapContext>(getSnapIds(request_)));
+    } else {
+        struct CloneContext ctx;
+        struct CloneInfos cfo;
+        ctx.cloneNo = request_->cloneno();
+        for (int i = 0; i < request_->clones_size(); i++) {
+            cfo.cloneNo = request_->clones(i).cloneno();
+            cfo.cloneSn = request_->clones(i).clonesn();
+            ctx.clones.push_back(cfo);
+        }
+
+        ret = datastore_->ReadSnapshotChunk(request_->chunkid(),
+                                            request_->sn(),
+                                            readBuffer,
+                                            request_->offset(),
+                                            request_->size(),
+                                            std::make_shared<SnapContext>(getSnapIds(request_)),
+                                            std::shared_ptr<struct CloneContext>(&ctx));
+    }
+
     butil::IOBuf wrapper;
     wrapper.append_user_data(readBuffer, size, ReadBufferDeleter);
 
@@ -585,8 +665,8 @@ void ReadSnapshotRequest::OnApplyFromLog(std::shared_ptr<CSDataStore> datastore,
 void DeleteSnapshotRequest::OnApply(uint64_t index,
                                     ::google::protobuf::Closure *done) {
     brpc::ClosureGuard doneGuard(done);
-    CSErrorCode ret = datastore_->DeleteSnapshotChunkOrCorrectSn(
-        request_->chunkid(), request_->correctedsn());
+    CSErrorCode ret = datastore_->DeleteSnapshotChunk(
+        request_->chunkid(), request_->snapsn(), std::make_shared<SnapContext>(getSnapIds(request_)));
     if (CSErrorCode::Success == ret) {
         response_->set_status(CHUNK_OP_STATUS::CHUNK_OP_STATUS_SUCCESS);
         node_->UpdateAppliedIndex(index);
@@ -616,8 +696,8 @@ void DeleteSnapshotRequest::OnApplyFromLog(std::shared_ptr<CSDataStore> datastor
                                            const butil::IOBuf &data) {
     (void)data;
     // NOTE: 处理过程中优先使用参数传入的datastore/request
-    auto ret = datastore->DeleteSnapshotChunkOrCorrectSn(
-        request.chunkid(), request.correctedsn());
+    auto ret = datastore->DeleteSnapshotChunk(
+        request.chunkid(), request.snapsn(), std::make_shared<SnapContext>(getSnapIds(&request)));
     if (CSErrorCode::Success == ret) {
         return;
     } else if (CSErrorCode::BackwardRequestError == ret) {
@@ -641,7 +721,7 @@ void CreateCloneChunkRequest::OnApply(uint64_t index,
 
     auto ret = datastore_->CreateCloneChunk(request_->chunkid(),
                                             request_->sn(),
-                                            request_->correctedsn(),
+                                            request_->sn(), //request_->correctedsn(),
                                             request_->size(),
                                             request_->location());
 
@@ -681,7 +761,7 @@ void CreateCloneChunkRequest::OnApplyFromLog(std::shared_ptr<CSDataStore> datast
     // NOTE: 处理过程中优先使用参数传入的datastore/request
     auto ret = datastore->CreateCloneChunk(request.chunkid(),
                                            request.sn(),
-                                           request.correctedsn(),
+                                           request.sn(), //request.correctedsn()
                                            request.size(),
                                            request.location());
     if (CSErrorCode::Success == ret)

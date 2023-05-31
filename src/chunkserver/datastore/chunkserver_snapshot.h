@@ -39,6 +39,7 @@ namespace curve {
 namespace chunkserver {
 
 using curve::common::Bitmap;
+using curve::common::BitRange;
 using curve::fs::LocalFileSystem;
 
 class FilePool;
@@ -77,6 +78,7 @@ struct SnapshotMetaPage {
 };
 
 class CSSnapshot {
+    friend class CSSnapshots;
  public:
     CSSnapshot(std::shared_ptr<LocalFileSystem> lfs,
                std::shared_ptr<FilePool> chunkFilePool,
@@ -144,10 +146,19 @@ class CSSnapshot {
      * Load metapage into memory
      */
     CSErrorCode loadMetaPage();
+    /**
+     * Read in ranges
+    */
+    CSErrorCode ReadRanges(char *buf, off_t offset, size_t length, std::vector<BitRange>& ranges);
 
     inline string path() {
         return baseDir_ + "/" +
                FileNameOperator::GenerateSnapshotName(chunkId_, metaPage_.sn);
+    }
+
+    inline string path(SequenceNum snapSn) {
+        return baseDir_ + "/" +
+               FileNameOperator::GenerateSnapshotName(chunkId_, snapSn);
     }
 
     inline uint32_t fileSize() {
@@ -193,6 +204,40 @@ class CSSnapshot {
     std::shared_ptr<FilePool> chunkFilePool_;
     // datastore internal statistical indicators
     std::shared_ptr<DataStoreMetric> metric_;
+};
+
+class CSSnapshots {
+ public:
+    CSSnapshots(PageSizeType size): pageSize_(size) {}
+    bool insert(CSSnapshot* s);
+    bool erase(SequenceNum sn);
+    CSSnapshot* pop(SequenceNum sn);
+    bool contains(SequenceNum sn) const;
+    SequenceNum getCurrentSn() const;
+    CSSnapshot* getCurrentSnapshot();
+    CSErrorCode Read(SequenceNum sn, char * buf, off_t offset, size_t length, vector<BitRange>* clearRanges);
+    CSErrorCode Delete(CSChunkFile* chunkf, SequenceNum sn, std::shared_ptr<SnapContext> ctx);
+
+    CSErrorCode Move(SequenceNum from, SequenceNum to);
+    CSErrorCode Merge(SequenceNum from, SequenceNum to);
+    virtual ~CSSnapshots();
+
+    
+    bool DivideSnapshotObjInfoByIndex (CSChunkFilePtr chunkfile, 
+                                    SequenceNum sn, std::vector<BitRange>& range, 
+                                    std::vector<BitRange>& notInRanges, 
+                                    std::vector<ObjectInfo>& objInfos);
+
+    bool isObjInSpecifiedSnap(SequenceNum sn, const ObjectInfo & objInfo, 
+                                    CSSnapshot** snap);
+
+
+ private:
+    std::vector<CSSnapshot*>::iterator find(SequenceNum sn);
+
+    // Snapshot file pointers, sorted by sequence number.
+    std::vector<CSSnapshot*> snapshots_;
+    const PageSizeType pageSize_;
 };
 
 }  // namespace chunkserver

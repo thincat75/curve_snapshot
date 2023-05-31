@@ -71,6 +71,15 @@ class RequestSender {
                   const RequestSourceInfo& sourceInfo,
                   ClientClosure *done);
 
+    int ReadChunk(const ChunkIDInfo& idinfo,
+                  uint64_t sn,
+                  off_t offset,
+                  size_t length,
+                  uint64_t appliedindex,
+                  const RequestSourceInfo& sourceInfo,
+                  struct CloneFileInfo& cloneInfo,
+                  ClientClosure *done);
+
     /**
    * 写Chunk
    * @param idinfo为chunk相关的id信息
@@ -93,6 +102,17 @@ class RequestSender {
                    const RequestSourceInfo& sourceInfo,
                    ClientClosure *done);
 
+    int WriteChunk(const ChunkIDInfo& idinfo,
+                   uint64_t fileId,
+                   uint64_t epoch,
+                   uint64_t sn,
+                   const butil::IOBuf& data,
+                   off_t offset,
+                   size_t length,
+                   const RequestSourceInfo& sourceInfo,
+                   struct CloneFileInfo& cloneInfo,
+                   ClientClosure *done);
+
     /**
      * 读Chunk快照文件
      * @param idinfo为chunk相关的id信息
@@ -105,6 +125,13 @@ class RequestSender {
                           uint64_t sn,
                           off_t offset,
                           size_t length,
+                          ClientClosure *done);
+
+    int ReadChunkSnapshot(const ChunkIDInfo& idinfo,
+                          uint64_t sn,
+                          off_t offset,
+                          size_t length,
+                          struct CloneFileInfo& cloneInfo,
                           ClientClosure *done);
 
     /**

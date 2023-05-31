@@ -413,7 +413,7 @@ TEST_F(ChunkserverTest, normal_read_write_test) {
                 request.set_logicpoolid(logicPoolId);
                 request.set_copysetid(copysetId);
                 request.set_chunkid(chunkId);
-                request.set_correctedsn(sn);
+                //request.set_correctedsn(sn);
                 stub.DeleteChunkSnapshotOrCorrectSn(&cntl,
                                                     &request,
                                                     &response,
@@ -432,7 +432,7 @@ TEST_F(ChunkserverTest, normal_read_write_test) {
                 request.set_logicpoolid(logicPoolId);
                 request.set_copysetid(copysetId);
                 request.set_chunkid(chunkId);
-                request.set_correctedsn(sn);
+                //request.set_correctedsn(sn);
                 stub.DeleteChunkSnapshotOrCorrectSn(&cntl,
                                                     &request,
                                                     &response,

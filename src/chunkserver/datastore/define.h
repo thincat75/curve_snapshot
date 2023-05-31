@@ -32,6 +32,13 @@
 namespace curve {
 namespace chunkserver {
 
+class ChunkRequest;
+class CSChunkFile;
+class CSSnapshot;
+
+using CSChunkFilePtr = std::shared_ptr<CSChunkFile>;
+using CSSnapshotPtr = std::shared_ptr<CSSnapshot>;
+
 using curve::common::Bitmap;
 
 // In zeroed chunk file, the version is 2,
@@ -41,6 +48,25 @@ const uint8_t FORMAT_VERSION_V2 = 2;
 const SequenceNum kInvalidSeq = 0;
 
 DECLARE_uint32(minIoAlignment);
+
+
+#define OBJ_SIZE 65536
+#define OBJ_SIZE_SHIFT 16
+#define OBJ_SIZE_MASK 0xFFFF
+
+#define PAGE_SIZE_SHIFT 12
+#define PAGE_SIZE_MASK 0xFFF
+
+struct ObjectInfo {
+    CSChunkFilePtr fileptr;
+    CSSnapshotPtr snapptr;
+    SequenceNum sn;
+    uint32_t seq; // object sequence number, size of OBJ_SIZE, in Clone Chunk, the OBJ_SIZE is 64KB
+    uint32_t index; // seq number by 4KB
+    uint32_t offset;
+    uint32_t length;
+    uint32_t bufOff;
+};
 
 // define error code
 enum CSErrorCode {
@@ -75,6 +101,8 @@ enum CSErrorCode {
     // The page has not been written, it will appear when the page that has not
     // been written is read when the clone chunk is read
     PageNerverWrittenError = 13,
+    // Thrown when given snapshot is not found for a chunk.
+    SnapshotNotExistError = 14,
 };
 
 // Chunk details
@@ -137,6 +165,29 @@ struct CSChunkInfo {
     bool operator!= (const CSChunkInfo& rhs) const {
         return !(*this == rhs);
     }
+};
+
+class SnapContext {
+ public:
+    SnapContext(const std::vector<SequenceNum>& snaps);
+    virtual ~SnapContext() = default;
+
+    static std::shared_ptr<SnapContext> build_empty() {
+        std::shared_ptr<SnapContext> ptr(new SnapContext());
+        return ptr;
+    }
+
+    SequenceNum getNext(SequenceNum snapSn) const;
+    SequenceNum getPrev(SequenceNum snapSn) const;
+    SequenceNum getLatest() const;
+    bool contains(SequenceNum snapSn) const;
+    bool empty() const;
+
+ private:
+    SnapContext() = default;
+    // existing snapshot sequences, in descending order.
+    std::vector<SequenceNum> snaps;
+    
 };
 
 }  // namespace chunkserver

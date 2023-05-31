@@ -32,6 +32,7 @@
 #include <unordered_set>
 
 #include "include/client/libcurve.h"
+#include "src/common/net_common.h"
 #include "src/common/throttle.h"
 
 namespace curve {
@@ -137,6 +138,16 @@ struct CloneSourceInfo {
     bool IsSegmentAllocated(uint64_t offset) const;
 };
 
+struct CloneInfos {
+    uint64_t cloneNo;
+    uint64_t cloneSn;
+};
+
+struct CloneFileInfo {
+    uint64_t cloneNo = 0;
+    std::vector<struct CloneInfos> clones;
+};
+
 typedef struct FInfo {
     uint64_t id;
     uint64_t parentid;
@@ -146,6 +157,8 @@ typedef struct FInfo {
     uint64_t length;
     uint64_t ctime;
     uint64_t seqnum;
+    std::vector<uint64_t> snaps;
+
     // userinfo是当前操作这个文件的用户信息
     UserInfo_t userinfo;
     // owner是当前文件所属信息
@@ -173,6 +186,11 @@ typedef struct FInfo {
         stripeUnit = 0;
         stripeCount = 0;
     }
+
+    //member of clone file
+    bool isClone = false;
+    struct CloneFileInfo cInfo;
+
 } FInfo_t;
 
 typedef struct FileEpoch {

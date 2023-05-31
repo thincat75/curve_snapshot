@@ -46,8 +46,10 @@ namespace chunkserver {
 using curve::fs::LocalFileSystem;
 using ::curve::common::Atomic;
 using CSChunkFilePtr = std::shared_ptr<CSChunkFile>;
+using CSSnapshotPtr = std::shared_ptr<CSSnapshot>;
 
-inline void TrivialDeleter(void* /*ptr*/) {}
+
+inline void TrivialDeleter(void* /* ptr */) {}
 
 /**
  * DataStore configuration parameters
@@ -175,7 +177,7 @@ class CSDataStore {
      * @param sn: used to record trace, if sn<chunk sn, delete is not allowed
      * @return: return error code
      */
-    virtual CSErrorCode DeleteChunk(ChunkID id, SequenceNum sn);
+    virtual CSErrorCode DeleteChunk(ChunkID id, SequenceNum sn, std::shared_ptr<SnapContext> ctx = nullptr);
     /**
      * Delete snapshots generated during this dump or before
      * If no snapshot is generated during the dump, modify the correctedSn
@@ -186,8 +188,8 @@ class CSDataStore {
      * of the chunk to this parameter value
      * @return: return error code
      */
-    virtual CSErrorCode DeleteSnapshotChunkOrCorrectSn(
-        ChunkID id, SequenceNum correctedSn);
+    virtual CSErrorCode DeleteSnapshotChunk(
+        ChunkID id, SequenceNum snapSn, std::shared_ptr<SnapContext> ctx = nullptr);
     /**
      * Read the contents of the current chunk
      * @param id: the chunk id to be read
@@ -203,6 +205,12 @@ class CSDataStore {
                                   char * buf,
                                   off_t offset,
                                   size_t length);
+    CSErrorCode ReadChunk(ChunkID id,
+                                SequenceNum sn,
+                                char * buf,
+                                off_t offset,
+                                size_t length,
+                                struct CloneContext& ctx);
 
     /**
      * Read the metadata of the current chunk
@@ -231,7 +239,17 @@ class CSDataStore {
                                           SequenceNum sn,
                                           char * buf,
                                           off_t offset,
-                                          size_t length);
+                                          size_t length,
+                                          std::shared_ptr<SnapContext> ctx = nullptr);
+
+    CSErrorCode ReadSnapshotChunk(ChunkID id,
+                                SequenceNum sn,
+                                char * buf,
+                                off_t offset,
+                                size_t length,
+                                std::shared_ptr<SnapContext> ctx,
+                                std::shared_ptr<CloneContext> cloneCtx);
+
     /**
      * Write data
      * @param id: the chunk id to be written
@@ -250,7 +268,18 @@ class CSDataStore {
                                 off_t offset,
                                 size_t length,
                                 uint32_t* cost,
+                                std::shared_ptr<SnapContext> ctx,
                                 const std::string & cloneSourceLocation = "");
+
+    //WriteChunk interface for the clone chunk
+    CSErrorCode WriteChunk (ChunkID id, 
+                                SequenceNum sn,
+                                const butil::IOBuf& buf, 
+                                off_t offset, 
+                                size_t length,
+                                uint32_t* cost, 
+                                std::shared_ptr<SnapContext> ctx, 
+                                std::shared_ptr<CloneContext> cloneCtx);
 
 
     virtual CSErrorCode SyncChunk(ChunkID id);
@@ -265,7 +294,19 @@ class CSDataStore {
         data.append_user_data(const_cast<char*>(buf), length, TrivialDeleter);
 
         return WriteChunk(id, sn, data, offset, length, cost,
-                          cloneSourceLocation);
+                          SnapContext::build_empty(), cloneSourceLocation);
+    }
+
+    // Deprecated, only use for unit & integration test
+    virtual CSErrorCode WriteChunk(
+        ChunkID id, SequenceNum sn, const char *buf, off_t offset,
+        size_t length, uint32_t *cost,std::shared_ptr<SnapContext> ctx,
+        const std::string &cloneSourceLocation = "") {
+        butil::IOBuf data;
+        data.append_user_data(const_cast<char*>(buf), length, TrivialDeleter);
+
+        return WriteChunk(id, sn, data, offset, length, cost,
+                          ctx, cloneSourceLocation);
     }
 
     /**
@@ -334,10 +375,39 @@ class CSDataStore {
         metaCache_.SetSyncChunkLimits(limit, threshold);
     }
 
- private:
-    CSErrorCode loadChunkFile(ChunkID id);
+    CSErrorCode loadCloneChunkFile(ChunkID id, uint64_t cloneNo, 
+                                CSChunkFilePtr* clonefile);
+
+    struct CloneInfos getParentClone (std::vector<struct CloneInfos>& clones, 
+                                uint64_t cloneNo);
+
+    void searchChunkForObj (CSChunkFilePtr chunkfile, 
+                            SequenceNum sn, 
+                            std::vector<ObjectInfo>& objInfos, 
+                            uint32_t beginIndex, uint32_t endIndex, 
+                            struct CloneContext& ctx);
+
+    CSErrorCode ReadByObjInfo (char* buf, ObjectInfo* objinfo);
+
+    void SplitDataIntoObjs (CSChunkFilePtr chunkfile, 
+                            SequenceNum sn,
+                            std::vector<ObjectInfo>& objInfos, 
+                            off_t offset, 
+                            size_t length,
+                            struct CloneContext& ctx);
+
+    CSErrorCode CreateChunkFile(const ChunkOptions & options,
+                                CSChunkFilePtr chunkFile,
+                                CSChunkFilePtr* cloneChunkFile, 
+                                uint64_t cloneNo);
+
     CSErrorCode CreateChunkFile(const ChunkOptions & ops,
                                 CSChunkFilePtr* chunkFile);
+    
+    void DebugPrint();
+
+ private:
+    CSErrorCode loadChunkFile(ChunkID id);
 
  private:
     // The size of each chunk

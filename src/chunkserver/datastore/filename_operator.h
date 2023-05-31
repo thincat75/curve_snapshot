@@ -40,6 +40,8 @@ class FileNameOperator {
     enum class FileType {
         CHUNK,
         SNAPSHOT,
+        CLONE,
+        CLONE_SNAPSHOT,
         UNKNOWN,
     };
 
@@ -47,6 +49,7 @@ class FileNameOperator {
         FileType    type;
         ChunkID     id;
         SequenceNum sn;
+        uint64_t   cloneNo;
     };
 
     FileNameOperator() {}
@@ -61,6 +64,11 @@ class FileNameOperator {
                 + "_snap_" + std::to_string(sn);
     }
 
+    static inline string GenerateCloneFileName(ChunkID id, uint64_t cloneNo) {
+        return GenerateChunkFileName(id)
+                + "_clone_" + std::to_string(cloneNo);
+    }
+
     static inline FileInfo ParseFileName(const string& fileName) {
         vector<string> elements;
         ::curve::common::SplitString(fileName, "_", &elements);
@@ -69,6 +77,8 @@ class FileNameOperator {
 
         // The format of the chunk file name is chunk_id
         // The format of snapshot file name is chunk_id_snap_sn
+        // The format of clone file name is chunk_id_clone_cloneNo
+        // The format of clone snapshot file name is chunk_id_clone_cloneNo_snap_sn
         // Separate file names with "_" and parse file information
         // If the above format is not met, the file type is UNKNOWN
         if (elements.size() == 2
@@ -81,6 +91,22 @@ class FileNameOperator {
             info.id = std::stoull(elements[1]);
             info.sn = std::stoull(elements[3]);
             info.type = FileType::SNAPSHOT;
+        } else if (elements.size() == 4
+                   && elements[0].compare("chunk") == 0
+                   && elements[2].compare("clone") == 0) {
+            info.id = std::stoull(elements[1]);
+            info.cloneNo = std::stoull(elements[3]);
+            info.type = FileType::CLONE;
+        } else if (elements.size() == 6
+                   && elements[0].compare("chunk") == 0
+                   && elements[2].compare("clone") == 0
+                   && elements[4].compare("snap") == 0) {
+            info.id = std::stoull(elements[1]);
+            info.cloneNo = std::stoull(elements[3]);
+            info.sn = std::stoull(elements[5]);
+            info.type = FileType::CLONE_SNAPSHOT;
+        } else {
+            LOG(WARNING) << "Unknown file name: " << fileName;
         }
 
         return info;

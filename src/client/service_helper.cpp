@@ -111,6 +111,9 @@ void ServiceHelper::ProtoFileInfo2Local(const curve::mds::FileInfo& finfo,
     if (finfo.has_seqnum()) {
         fi->seqnum = finfo.seqnum();
     }
+    for (int i = 0; i < finfo.snaps_size(); i++) {
+        fi->snaps.emplace_back(finfo.snaps(i));
+    }
     if (finfo.has_filestatus()) {
         fi->filestatus = (FileStatus)finfo.filestatus();
     }
@@ -130,6 +133,20 @@ void ServiceHelper::ProtoFileInfo2Local(const curve::mds::FileInfo& finfo,
         fEpoch->epoch = finfo.epoch();
     } else {
         fEpoch->epoch = 0;
+    }
+
+    if (finfo.has_cloneno()) {
+        fi->isClone = true;
+        fi->cInfo.cloneNo = finfo.cloneno();
+
+        curve::mds::FileInfo_CloneInfos citem;
+        for (int i=0; i < finfo.clones_size(); i++) {
+            struct CloneInfos cfo;
+            citem = finfo.clones(i);
+            cfo.cloneNo = citem.cloneno();
+            cfo.cloneSn = citem.clonesn();
+            fi->cInfo.clones.emplace_back(cfo);
+        }
     }
 }
 

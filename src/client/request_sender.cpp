@@ -80,7 +80,6 @@ int RequestSender::ReadChunk(const ChunkIDInfo& idinfo,
                              uint64_t appliedindex,
                              const RequestSourceInfo& sourceInfo,
                              ClientClosure *done) {
-    (void)sn;
     brpc::ClosureGuard doneGuard(done);
     brpc::Controller *cntl = new brpc::Controller();
     ChunkResponse *response = new ChunkResponse();
@@ -107,6 +106,105 @@ int RequestSender::ReadChunk(const ChunkIDInfo& idinfo,
 
     ChunkService_Stub stub(&channel_);
     stub.ReadChunk(cntl, &request, response, doneGuard.release());
+
+    return 0;
+}
+
+int RequestSender::ReadChunk(const ChunkIDInfo& idinfo,
+                             uint64_t sn,
+                             off_t offset,
+                             size_t length,
+                             uint64_t appliedindex,
+                             const RequestSourceInfo& sourceInfo,
+                             struct CloneFileInfo& cloneInfo,
+                             ClientClosure *done) {
+    brpc::ClosureGuard doneGuard(done);
+    brpc::Controller *cntl = new brpc::Controller();
+    ChunkResponse *response = new ChunkResponse();
+
+    UpdateRpcRPS(done, OpType::READ);
+    SetRpcStuff(done, cntl, response);
+
+    ChunkRequest request;
+    request.set_optype(curve::chunkserver::CHUNK_OP_TYPE::CHUNK_OP_READ);
+    request.set_logicpoolid(idinfo.lpid_);
+    request.set_copysetid(idinfo.cpid_);
+    request.set_chunkid(idinfo.cid_);
+    request.set_offset(offset);
+    request.set_size(length);
+
+    //set clone parameter
+    request.set_cloneno (cloneInfo.cloneNo);
+    for (auto &it : cloneInfo.clones) {
+        ChunkRequest::CloneInfos *clone = request.add_clones();
+        clone->set_cloneno (it.cloneNo);
+        clone->set_clonesn (it.cloneSn);
+    }    
+
+    if (sourceInfo.IsValid()) {
+        request.set_clonefilesource(sourceInfo.cloneFileSource);
+        request.set_clonefileoffset(sourceInfo.cloneFileOffset);
+    }
+
+    if (iosenderopt_.chunkserverEnableAppliedIndexRead && appliedindex > 0) {
+        request.set_appliedindex(appliedindex);
+    }
+
+    ChunkService_Stub stub(&channel_);
+    stub.ReadChunk(cntl, &request, response, doneGuard.release());
+
+    return 0;
+}
+
+int RequestSender::WriteChunk(const ChunkIDInfo& idinfo,
+                              uint64_t fileId,
+                              uint64_t epoch,
+                              uint64_t sn,
+                              const butil::IOBuf& data,
+                              off_t offset,
+                              size_t length,
+                              const RequestSourceInfo& sourceInfo,
+                              struct CloneFileInfo& cloneInfo,
+                              ClientClosure *done) {
+    brpc::ClosureGuard doneGuard(done);
+    brpc::Controller *cntl = new brpc::Controller();
+    ChunkResponse *response = new ChunkResponse();
+
+    DVLOG(9) << "Sending request, buf header: "
+             << " buf: " << *(unsigned int *)(data.fetch1());
+
+    UpdateRpcRPS(done, OpType::WRITE);
+    SetRpcStuff(done, cntl, response);
+
+    ChunkRequest request;
+    request.set_optype(curve::chunkserver::CHUNK_OP_TYPE::CHUNK_OP_WRITE);
+    request.set_logicpoolid(idinfo.lpid_);
+    request.set_copysetid(idinfo.cpid_);
+    request.set_chunkid(idinfo.cid_);
+    request.set_sn(sn);
+    request.set_offset(offset);
+    request.set_size(length);
+    request.set_fileid(fileId);
+    if (epoch != 0) {
+        request.set_epoch(epoch);
+    }
+
+    if (sourceInfo.IsValid()) {
+        request.set_clonefilesource(sourceInfo.cloneFileSource);
+        request.set_clonefileoffset(sourceInfo.cloneFileOffset);
+    }
+
+    //set clone parameter
+    request.set_cloneno (cloneInfo.cloneNo);
+    for (auto &it : cloneInfo.clones) {
+        ChunkRequest::CloneInfos *clone = request.add_clones();
+        clone->set_cloneno (it.cloneNo);
+        clone->set_clonesn (it.cloneSn);
+    }    
+
+    cntl->request_attachment().append(data);
+    ChunkService_Stub stub(&channel_);
+    stub.WriteChunk(cntl, &request, response, doneGuard.release());
 
     return 0;
 }
@@ -181,8 +279,44 @@ int RequestSender::ReadChunkSnapshot(const ChunkIDInfo& idinfo,
     return 0;
 }
 
+int RequestSender::ReadChunkSnapshot(const ChunkIDInfo& idinfo,
+                                     uint64_t sn,
+                                     off_t offset,
+                                     size_t length,
+                                     struct CloneFileInfo& cloneInfo,
+                                     ClientClosure *done) {
+    brpc::ClosureGuard doneGuard(done);
+    brpc::Controller *cntl = new brpc::Controller();
+    ChunkResponse *response = new ChunkResponse();
+
+    UpdateRpcRPS(done, OpType::READ_SNAP);
+    SetRpcStuff(done, cntl, response);
+
+    ChunkRequest request;
+    request.set_optype(curve::chunkserver::CHUNK_OP_TYPE::CHUNK_OP_READ_SNAP);
+    request.set_logicpoolid(idinfo.lpid_);
+    request.set_copysetid(idinfo.cpid_);
+    request.set_chunkid(idinfo.cid_);
+    request.set_sn(sn);
+    request.set_offset(offset);
+    request.set_size(length);
+
+    //set clone parameter
+    request.set_cloneno (cloneInfo.cloneNo);
+    for (auto &it : cloneInfo.clones) {
+        ChunkRequest::CloneInfos *clone = request.add_clones();
+        clone->set_cloneno (it.cloneNo);
+        clone->set_clonesn (it.cloneSn);
+    }    
+
+    ChunkService_Stub stub(&channel_);
+    stub.ReadChunkSnapshot(cntl, &request, response, doneGuard.release());
+
+    return 0;
+}
+
 int RequestSender::DeleteChunkSnapshotOrCorrectSn(const ChunkIDInfo& idinfo,
-                                                  uint64_t correctedSn,
+                                                  uint64_t snapSn,
                                                   ClientClosure* done) {
     brpc::ClosureGuard doneGuard(done);
     brpc::Controller *cntl = new brpc::Controller();
@@ -196,7 +330,7 @@ int RequestSender::DeleteChunkSnapshotOrCorrectSn(const ChunkIDInfo& idinfo,
     request.set_logicpoolid(idinfo.lpid_);
     request.set_copysetid(idinfo.cpid_);
     request.set_chunkid(idinfo.cid_);
-    request.set_correctedsn(correctedSn);
+    request.set_snapsn(snapSn);
     ChunkService_Stub stub(&channel_);
     stub.DeleteChunkSnapshotOrCorrectSn(cntl,
                                         &request,
@@ -226,7 +360,7 @@ int RequestSender::GetChunkInfo(const ChunkIDInfo& idinfo,
 int RequestSender::CreateCloneChunk(const ChunkIDInfo& idinfo,
                                 ClientClosure *done,
                                 const std::string &location,
-                                uint64_t correntSn,
+                                uint64_t snapSn,
                                 uint64_t sn,
                                 uint64_t chunkSize) {
     brpc::ClosureGuard doneGuard(done);
@@ -244,7 +378,7 @@ int RequestSender::CreateCloneChunk(const ChunkIDInfo& idinfo,
     request.set_chunkid(idinfo.cid_);
     request.set_location(location);
     request.set_sn(sn);
-    request.set_correctedsn(correntSn);
+    request.set_snapsn(snapSn);
     request.set_size(chunkSize);
 
     ChunkService_Stub stub(&channel_);

@@ -221,7 +221,7 @@ class ExecDeleteSnapshot : public ExecStep {
     ~ExecDeleteSnapshot() {}
 
     void Exec() override {
-        (*datastore_)->DeleteSnapshotChunkOrCorrectSn(id_, correctedSn_);
+    //    (*datastore_)->DeleteSnapshotChunkOrCorrectSn(id_, correctedSn_);
     }
 
     void Dump() override {

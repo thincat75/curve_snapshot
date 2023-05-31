@@ -17,7 +17,7 @@
 load("//:copts.bzl", "CURVE_TEST_COPTS")
 
 cc_test(
-    name = "clone_and_snapshots_test",
+    name = "clone_snap_test",
     srcs = glob([
         "*.cpp",
         "clone_test_util.h",
@@ -39,6 +39,7 @@ cc_test(
         "//test/chunkserver/clone:clone_mock",
         "//test/client/mock:client_mock_lib",
         "//test/common:common_mock",
+        "//test/fs:fs_mock",
     ],
     copts = CURVE_TEST_COPTS,
 )

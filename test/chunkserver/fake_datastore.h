@@ -65,7 +65,7 @@ class FakeCSDataStore : public CSDataStore {
         return true;
     }
 
-    CSErrorCode DeleteChunk(ChunkID id, SequenceNum sn) override {
+    CSErrorCode DeleteChunk(ChunkID id, SequenceNum sn, std::shared_ptr<SnapContext> ctx = nullptr) override {
         CSErrorCode errorCode = HasInjectError();
         if (errorCode != CSErrorCode::Success) {
             return errorCode;
@@ -78,6 +78,7 @@ class FakeCSDataStore : public CSDataStore {
         }
     }
 
+/*
     CSErrorCode DeleteSnapshotChunkOrCorrectSn(
         ChunkID id, SequenceNum correctedSn) override {
         CSErrorCode errorCode = HasInjectError();
@@ -92,6 +93,7 @@ class FakeCSDataStore : public CSDataStore {
             return CSErrorCode::ChunkNotExistError;
         }
     }
+*/
 
     CSErrorCode ReadChunk(ChunkID id,
                           SequenceNum sn,
@@ -116,7 +118,7 @@ class FakeCSDataStore : public CSDataStore {
                                   SequenceNum sn,
                                   char *buf,
                                   off_t offset,
-                                  size_t length) override {
+                                  size_t length, std::shared_ptr<SnapContext> ctx = nullptr) override {
         CSErrorCode errorCode = HasInjectError();
         if (errorCode != CSErrorCode::Success) {
             return errorCode;
@@ -134,6 +136,7 @@ class FakeCSDataStore : public CSDataStore {
                            off_t offset,
                            size_t length,
                            uint32_t *cost,
+                           std::shared_ptr<SnapContext> ctx = nullptr,
                            const std::string & csl = "") override {
         CSErrorCode errorCode = HasInjectError();
         if (errorCode != CSErrorCode::Success) {

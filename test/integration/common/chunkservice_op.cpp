@@ -198,7 +198,7 @@ int ChunkServiceOp::DeleteChunkSnapshotOrCorrectSn(
     request.set_logicpoolid(opConf->logicPoolId);
     request.set_copysetid(opConf->copysetId);
     request.set_chunkid(chunkId);
-    request.set_correctedsn(correctedSn);
+    //request.set_correctedsn(correctedSn);
     stub.DeleteChunkSnapshotOrCorrectSn(&cntl, &request, &response, nullptr);
 
     if (cntl.Failed()) {
@@ -233,7 +233,7 @@ int ChunkServiceOp::CreateCloneChunk(struct ChunkServiceOpConf *opConf,
     request.set_chunkid(chunkId);
     request.set_location(location);
     request.set_sn(sn);
-    request.set_correctedsn(correctedSn);
+    //request.set_correctedsn(correctedSn);
     request.set_size(chunkSize);
     stub.CreateCloneChunk(&cntl, &request, &response, nullptr);
 

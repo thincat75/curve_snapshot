@@ -93,6 +93,33 @@ message FileInfo {
 
     optional    FileThrottleParams throttleParams = 17;
     optional    uint64      epoch = 18;
+
+    // sequence numbers of snapshots
+    repeated    uint64      snaps = 19;
+
+    //clone tree
+    // /root/user1/file ---> snapshot 1
+    //                |      snapshot 2
+    //                |      snapshot 3
+    //                |------> clone1  ---> snapshot1
+    //                             |        snapshot2
+    //                             |        snapshot3
+    //                             |------->clone2
+    //the clone file name like /root/user1/file@clone1
+    //                         /root/user1/file@clone1@clone2
+    //if there is also a file name create on the same file and snapshot
+    //the clone file name like /root/user1/file@clone3
+    //the clone file in chunkserver like chunk_333_clone_6 ...
+
+    //about clone parameter clone tree root id
+    //cloneParentId means that it is maybe the clone parent Id
+    //cloneParentNo means the clone number , which is increse number
+    message CloneInfos {
+        required uint64 cloneNo = 1;
+        required uint64 cloneSn = 2;
+    }
+    optional    uint64      cloneNo = 20;
+    repeated    CloneInfos  clones = 21;
 }
 
 // status code

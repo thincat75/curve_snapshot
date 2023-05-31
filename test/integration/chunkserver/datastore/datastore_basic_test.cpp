@@ -168,6 +168,7 @@ TEST_F(BasicTestSuit, BasicTest) {
                                        iobuf1_1_4,
                                        offset,
                                        length,
+                                       nullptr,
                                        nullptr);
     ASSERT_EQ(errorCode, CSErrorCode::Success);
 

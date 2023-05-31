@@ -53,7 +53,7 @@ int ChunkServerClient::DeleteChunkSnapshotOrCorrectSn(
     LogicalPoolID logicalPoolId,
     CopysetID copysetId,
     ChunkID chunkId,
-    uint64_t correctedSn) {
+    uint64_t snapSn) {
     ChannelPtr channelPtr;
     int res = GetOrInitChannel(leaderId, &channelPtr);
     if (res != kMdsSuccess) {
@@ -69,7 +69,7 @@ int ChunkServerClient::DeleteChunkSnapshotOrCorrectSn(
     request.set_logicpoolid(logicalPoolId);
     request.set_copysetid(copysetId);
     request.set_chunkid(chunkId);
-    request.set_correctedsn(correctedSn);
+    request.set_snapsn(snapSn);
 
     ChunkResponse response;
     uint32_t retry = 0;

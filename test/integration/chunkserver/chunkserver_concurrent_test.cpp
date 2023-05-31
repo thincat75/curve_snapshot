@@ -474,7 +474,7 @@ void CreateCloneChunk(Peer leader,
         request.set_copysetid(copysetId);
         request.set_chunkid(i);
         request.set_sn(sn);
-        request.set_correctedsn(correctedSn);
+        //request.set_correctedsn(correctedSn);
         request.set_location(location);
         request.set_size(kChunkSize);
         stub.CreateCloneChunk(&cntl, &request, &response, nullptr);

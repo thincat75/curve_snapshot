@@ -240,6 +240,7 @@ void ChunkServiceImpl::ReadChunk(RpcController *controller,
     }
 
     // 判断request参数是否合法
+    auto maxSize = copysetNodeManager_->GetCopysetNodeOptions().maxChunkSize;
     if (!CheckRequestOffsetAndLength(request->offset(), request->size())) {
         response->set_status(CHUNK_OP_STATUS::CHUNK_OP_STATUS_INVALID_REQUEST);
         LOG(ERROR) << "I/O request, op: " << request->optype()
@@ -389,9 +390,9 @@ void ChunkServiceImpl::DeleteChunkSnapshotOrCorrectSn(
         return;
     }
 
-    if (false == request->has_correctedsn()) {
+    if (false == request->has_snapsn()) {
         response->set_status(CHUNK_OP_STATUS::CHUNK_OP_STATUS_INVALID_REQUEST);
-        LOG(ERROR) << "delete chunk snapshot failed, no corrected sn:"
+        LOG(ERROR) << "delete chunk snapshot failed, no snapshot sn:"
                    << request->logicpoolid() << "," << request->copysetid();
         return;
     }

@@ -666,7 +666,7 @@ void DeleteSnapshotVerify(Peer leaderPeer,
     request.set_logicpoolid(logicPoolId);
     request.set_copysetid(copysetId);
     request.set_chunkid(chunkId);
-    request.set_correctedsn(csn);
+    //request.set_correctedsn(csn);
     stub.DeleteChunkSnapshotOrCorrectSn(&cntl, &request, &response, nullptr);
     LOG_IF(INFO, cntl.Failed()) << "error msg: "
                                 << cntl.ErrorCode() << " : "
